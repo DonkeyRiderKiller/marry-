@@ -63,29 +63,36 @@ FIXED_MATCHES = generate_matches(FINAL_SEED)
 class ConnectionError(Exception):
     pass
 
-@st.cache_resource(ttl=600) # 缓存客户端连接，避免重复认证
+# 辅助函数：连接 Google Sheets
+@st.cache_resource(ttl=600) 
 def get_sheet_client():
     """使用 Streamlit Secrets 中的服务账号凭证连接 Google Sheets。"""
     
     try:
         # 1. 从 secrets 中获取凭证字典
-        # 确保你的 Streamlit Secrets 配置中包含 [gsheets] section
         creds = st.secrets["gsheets"]
         
-        # 2. 使用 gspread 库进行授权和连接
+        # 2. ❗ 核心：手动重构 private_key ❗
+        private_key_clean = creds.pop("private_key_clean") # 移除干净的key
+        
+        # 重新构建完整的 private_key 字符串，添加换行符
+        creds['private_key'] = '-----BEGIN PRIVATE KEY-----\n' + \
+                               private_key_clean.replace(' ', '\n') + \
+                               '\n-----END PRIVATE KEY-----\n'
+        
+        # 3. 使用 gspread 库进行授权和连接
         client = gspread.service_account_from_dict(creds)
         
-        # 3. 打开你的表格和工作表
+        # 4. 打开你的表格和工作表
         sheet = client.open(SHEET_TITLE).worksheet(WORKSHEET_NAME) 
         
         return sheet
         
     except Exception as e:
         # 记录错误信息到 Streamlit 界面
-        st.error(f"连接 Google Sheets 认证失败。请检查 Streamlit Secrets [gsheets] 配置和表格共享权限。错误: {e}")
+        st.error(f"连接 Google Sheets 认证失败。请检查 Streamlit Secrets [gsheets] 配置和表格共享权限。原始错误: {e}")
         # 抛出自定义连接错误，以便后续函数可以捕获并优雅处理
         raise ConnectionError(f"GSheets 连接错误: {e}")
-
 def get_drawn_log():
     """从 GSheets 读取所有已抽取的记录，获取已抽和已收名单。"""
     try:
@@ -209,3 +216,4 @@ st.markdown("---")
 st.caption(f"已抽取人数：{len(drawn_givers)}/{len(PARTICIPANTS)}")
 st.caption(f"剩余可抽：{', '.join(available_participants) if available_participants else '无'}")
 st.caption(f"程序版本号: {FINAL_SEED}")
+
